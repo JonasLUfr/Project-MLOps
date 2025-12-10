@@ -1,0 +1,6 @@
+evidently==0.4.20
+pandas
+sniffio
+scikit-learn==1.5.2
+numpy<2.0.0
+litestar

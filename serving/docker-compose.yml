@@ -1,0 +1,19 @@
+version: '3.8'
+
+networks:
+  prod_net:        # on def le nom interne du réseau
+    driver: bridge
+
+services:
+  serving-api:
+    container_name: serving-api  # nom que le front va appeler
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    networks:
+      - prod_net   # on le branche sur le réseau
+    volumes:
+      - ../data:/data
+      - ../artifacts:/artifacts
