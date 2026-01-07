@@ -69,7 +69,7 @@ def create_report():
     include_prediction_metrics = 'prediction' in ref_data.columns and 'prediction' in prod_data.columns
     
     metrics_list = [
-        DataDriftPreset(),       # verif si les donnees drift (PCA)
+        #DataDriftPreset(),       # verif si les donnees drift (PCA) -> pas update au format text
         TargetDriftPreset()      # verif si la cible change
     ]
 

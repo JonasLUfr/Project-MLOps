@@ -1,179 +1,127 @@
 import pandas as pd
-import pickle
+import joblib
 import os
 import csv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import Optional
 
 app = FastAPI()
 
-# path (accessibles via le volume Docker)
+# path
 ARTIFACTS_DIR = "/artifacts"
 DATA_DIR = "/data"
 PROD_DATA_PATH = os.path.join(DATA_DIR, "prod_data.csv")
+MODEL_PATH = os.path.join(ARTIFACTS_DIR, "phishing_tfidf_logreg.joblib")
 
-# var globales
-pipeline = None
+# variable globale pour le modèle
 model = None
 
-# input des données (issue de customer_churn_train.csv)
-class CustomerData(BaseModel):
-    CustomerID: int = 0
-    Age: int
-    Gender: str
-    Tenure: int
-    Usage_Frequency: int
-    Support_Calls: int
-    Payment_Delay: int
-    Subscription_Type: str
-    Contract_Length: str
-    Total_Spend: float
-    Last_Interaction: int
+class EmailInput(BaseModel):
+    email_text: str
 
-# modèle de données (pour le feedback -> enregistré dans prod_data.csv)
-class FeedbackData(BaseModel):
-    customer_data: CustomerData
-    correct_prediction: bool # true si on valide la prédiction, false sinon    -> verif la logique 
-    model_prediction: bool # ce que le modèle avait prédit
+class FeedbackInput(BaseModel):
+    email_text: str
+    model_prediction: str
+    user_correction: str
+
+
+# fonction utilitaire pour nettoyer le texte
+def clean_text(text: str) -> str:
+    # rm les espaces au début et à la fin
+    text = text.strip()
+    # remplace les retours à la ligne par des espaces
+    text = text.replace("\n", " ").replace("\r", " ")
+    # enleve les doubles espaces créés
+    import re
+    text = re.sub(' +', ' ', text)
+    return text
 
 @app.on_event("startup")
-def load_artifacts():
-    global pipeline, model
-    # chargement du Pipeline (PCA)
+def load_model():
+    global model
     try:
-        with open(f"{ARTIFACTS_DIR}/embedding_pipeline.pickle", "rb") as f:
-            pipeline = pickle.load(f)
-        print("✅ Pipeline (PCA) chargé avec succès.")
+        model = joblib.load(MODEL_PATH)
+        print(f"Modèle chargé depuis {MODEL_PATH}")
     except Exception as e:
-        print(f"⚠️ Pipeline non chargé ({e}). L'API utilisera des valeurs simulées.")
-        pipeline = None
-
-    # chargement du Modèle (classification) -> à décommenter quand dispo
-    # try:
-    #     with open(f"{ARTIFACTS_DIR}/model.pickle", "rb") as f:
-    #         model = pickle.load(f)
-    # except:
-    #     model = None
+        print(f"Erreur chargement modèle: {e}")
+        model = None
 
 @app.get("/")
 def read_root():
-    return {"status": "API Serving Churn (Active)", "pipeline_loaded": pipeline is not None}
+    return {"status": "Active", "model_loaded": model is not None}
 
 @app.post("/predict")
-def predict(data: CustomerData):
-    global pipeline
+def predict(data: EmailInput):
+    global model
     
-    # DEBUG LOGS (pour voir ce qui se passe dans la console Docker)
-    print(f"📥 Donnée reçue : {data.dict()}")
+    if model is None:
+        return {"prediction": "MOCK", "probability": 0.5, "status": "MOCK"}
 
-    # MODE MOCK (si pipeline cassé ou absent) 
-    if pipeline is None:
-        import random
-        return {
-            "prediction": bool(random.choice([True, False])),
-            "churn_probability": round(random.random(), 2),
-            "status": "MOCK_MODE (Pipeline non chargé)"
-        }
-    
-    # MODE REEL 
     try:
-        input_df = pd.DataFrame([data.dict()])
-        
-        # nettoyage et renommage (important car colonne avec un espace dedans)
-        # on supprime l'ID
-        if 'CustomerID' in input_df.columns:
-            input_df = input_df.drop(columns=['CustomerID'])
-            
-        # ⚠️ on remet les espaces que python avait remplacés par des _
-        # verif si d'autres colonnes ont des espaces
-        input_df = input_df.rename(columns={
-            "Usage_Frequency": "Usage Frequency", 
-            "Support_Calls": "Support Calls",
-            "Payment_Delay": "Payment Delay",
-            "Subscription_Type": "Subscription Type",
-            "Contract_Length": "Contract Length",
-            "Total_Spend": "Total Spend",
-            "Last_Interaction": "Last Interaction"
-        })
 
-        print(f"📊 Colonnes envoyées au Pipeline : {input_df.columns.tolist()}")
-            
-        # transfo (PCA)
-        data_pca = pipeline.transform(input_df)
+        cleaned_email = clean_text(data.email_text)
+
+        # prédiction brute (attention erreur format -> numpy.int32)
+        raw_pred = model.predict([cleaned_email])[0]
+        raw_proba = model.predict_proba([cleaned_email]).max()
+
+        # pour debug type -> affichage dans les logs
+        print(f"🔍 DEBUG TYPE: Pred={type(raw_pred)} Val={raw_pred} | Proba={type(raw_proba)}")
+
+        # conversion -> on force la proba en float python standard pour eviter une erreur
+        final_proba = float(raw_proba)
+
+        # gestion prédiction (Int ou Str)
+        final_pred = ""
         
-        # prédiction (mock ici car pas encore model.pickle)
-        import random
-        proba = random.random()
-        
+        # si le modèle renvoie 0 ou 1 (entier)
+        if hasattr(raw_pred, "item"): # détection type NumPy
+            valeur = raw_pred.item() # convertit numpy.int32 en int python
+            if isinstance(valeur, int):
+                # mappig du 1 en Phishing et 0 en Safe
+                # (à inverser si on considere l'inverse dans les datas)
+                final_pred = "Phishing Email" if valeur == 1 else "Safe Email"
+            else:
+                final_pred = str(valeur)
+        else:
+            # c'est déjà une string ou un int standard
+            final_pred = str(raw_pred)
+
+        # sécurité si le modèle a renvoyé "1" en string
+        if final_pred == "1": final_pred = "Phishing Email"
+        if final_pred == "0": final_pred = "Safe Email"
+
         return {
-            "prediction": proba > 0.5,
-            "churn_probability": proba,
-            "pca_vector": data_pca.tolist()
+            "prediction": final_pred,
+            "probability": final_proba,
+            "email_excerpt": cleaned_email[:50] + "..."
         }
+
     except Exception as e:
-        # on imprime l'erreur exacte dans les logs docker
+        print(f"ERREUR CRITIQUE: {e}")
         import traceback
         traceback.print_exc()
-        print(f"❌ ERREUR PREDICT : {e}")
-        raise HTTPException(status_code=500, detail=f"Erreur interne: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/feedback")
-def save_feedback(feedback: FeedbackData):
-    global pipeline
-    
-    # on a besoin du pipeline pour transfo les données brutes en PCA avant la sauvegarde dans prod_data.csv
-    if pipeline is None:
-        return {"status": "Erreur: Impossible de sauvegarder le feedback sans le pipeline (Format PCA requis)"}
-
+def save_feedback(feedback: FeedbackInput):
     try:
-        # transfo
-        input_df = pd.DataFrame([feedback.customer_data.dict()])
-        if 'CustomerID' in input_df.columns:
-            input_df = input_df.drop(columns=['CustomerID'])
-            
-        # ⚠️ on remet les espaces que python avait remplacés par des _
-        input_df = input_df.rename(columns={
-            "Usage_Frequency": "Usage Frequency", 
-            "Support_Calls": "Support Calls",
-            "Payment_Delay": "Payment Delay",
-            "Subscription_Type": "Subscription Type",
-            "Contract_Length": "Contract Length",
-            "Total_Spend": "Total Spend",
-            "Last_Interaction": "Last Interaction"
-        })
-        
-        data_pca = pipeline.transform(input_df) # renvoie un numpy array
-        
-        # prépa de la ligne (PCA_1...PCA_10 + prediction + target)
-        # data_pca[0] est le vecteur de 10 chiffres
-        row = list(data_pca[0])
-
-        # on ajoute la prédiction originale (1 ou 0)
-        row.append(1 if feedback.model_prediction else 0)
-        
-        # on ajoute la target (la valeur reel verifier par l'humain dans le front)
-        # si l'utilisateur dit "Prédiction correcte", alors target = prediction    -> verif la logique car pas sur opti
-        # sinon, target = l'inverse de la prediction
-        if feedback.correct_prediction:
-            target_value = 1 if feedback.model_prediction else 0
-        else:
-            target_value = 0 if feedback.model_prediction else 1
-        row.append(target_value)
-
-        # ecriture dans le CSV
         file_exists = os.path.isfile(PROD_DATA_PATH)
         
-        with open(PROD_DATA_PATH, 'a', newline='') as f:
-            writer = csv.writer(f)
-            # si fichier nouveau, on écrit l'entête PCA_1...PCA_10,prediction,target
-            if not file_exists:
-                header = [f"PCA_{i+1}" for i in range(len(row)-1)] + ["prediction", "target"]
-                writer.writerow(header)
-            
-            writer.writerow(row)
-            
-        return {"status": "Feedback enregistré", "rows_count": sum(1 for line in open(PROD_DATA_PATH))}
+        cleaned_email = clean_text(feedback.email_text)
 
+        with open(PROD_DATA_PATH, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+            if not file_exists:
+                writer.writerow(["email_text", "prediction", "target"])
+            
+            # on save la version clean du texte
+            writer.writerow([
+                cleaned_email, 
+                feedback.model_prediction, 
+                feedback.user_correction
+            ])
+            
+        return {"status": "Feedback Saved"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur sauvegarde: {e}")
+        raise HTTPException(status_code=500, detail=f"Erreur: {e}")
