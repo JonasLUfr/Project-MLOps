@@ -1,0 +1,20 @@
+version: "3.8"
+networks:
+  serving_prod_net: # nom exact du réseau créé par l'autre docker-compose
+    external: true  # on précise ici que le réseau existe déjà -> connecte-toi dessus
+
+services:
+  n8n:
+    image: n8nio/n8n
+    container_name: xyf-n8n-2
+    ports:
+      - "5678:5678"
+    volumes:
+      - xyf_n8n_data:/home/node/.n8n
+    networks:
+      - serving_prod_net # on le branche sur ce réseau externe
+
+
+volumes:
+  xyf_n8n_data:
+

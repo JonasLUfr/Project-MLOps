@@ -1,8 +1,8 @@
 version: '3.8'
 
 networks:
-  serving_prod_net: # nom exact du réseau créé par l'autre docker-compose
-    external: true  # on précise ici que le réseau existe déjà -> connecte-toi dessus
+  serving_prod_net:
+    external: true
 
 services:
   webapp:
@@ -13,6 +13,6 @@ services:
     ports:
       - "8081:8081"
     environment:
-      - API_URL=http://serving-api:8080/predict # on utilise le container_name du back
+      - API_URL=http://n8n:5678/webhook
     networks:
-      - serving_prod_net # on le branche sur ce réseau externe
+      - serving_prod_net

@@ -1,0 +1,6 @@
+POST http://localhost:5678/webhook-test/analyze
+Content-Type: application/json
+
+{
+  "email_text": "Your account has been locked."
+}

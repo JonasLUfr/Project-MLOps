@@ -3,6 +3,7 @@ version: '3.8'
 networks:
   prod_net:        # on def le nom interne du réseau
     driver: bridge
+    name: serving_prod_net
 
 services:
   serving-api:
