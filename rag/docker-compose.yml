@@ -6,11 +6,23 @@ networks:
 
 services:
   rag:
-    container_name: rag
+    container_name: rag-api
     build:
       context: .
       dockerfile: Dockerfile
     ports:
       - "8083:8083"
+    # lit le le fichier .env pour remplir automatiquement
+    env_file:
+      - .env
+    environment:
+      - PORT=8083
+      - HOST=0.0.0.0
+      - MONGODB_URI=${MONGODB_URI}
+      - DB_NAME=${DB_NAME}
+      - COLLECTION_NAME=${COLLECTION_NAME}
+      - EMB_MODEL=${EMB_MODEL}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - VECTOR_INDEX_NAME=${VECTOR_INDEX_NAME}
     networks:
       - serving_prod_net

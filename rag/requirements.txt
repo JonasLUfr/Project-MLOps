@@ -1,0 +1,12 @@
+flask
+python-dotenv
+pymongo
+# Versions fixées pour la stabilité
+llama-index-core>=0.10.0
+llama-index-llms-groq
+llama-index-embeddings-huggingface
+llama-index-vector-stores-mongodb
+# Pour éviter que pip télécharge des trucs inutiles
+transformers
+sentence-transformers
+accelerate

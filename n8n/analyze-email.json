@@ -14,7 +14,7 @@
         -1024,
         48
       ],
-      "id": "fdeea4c4-dfff-4382-b443-dd21cc2d6760",
+      "id": "5d5b41db-f86d-424f-a05c-330495b9d197",
       "name": "Receive Email Text",
       "webhookId": "0fcbfc1a-05ca-46bf-8782-9d6810d08c41"
     },
@@ -39,7 +39,7 @@
         -832,
         240
       ],
-      "id": "6b367f10-068f-4110-ac59-2fc75b991e18",
+      "id": "e07e25e9-5c40-4a84-b191-1a6bc8f4e634",
       "name": "HTTP Request"
     },
     {
@@ -73,32 +73,8 @@
         -208,
         96
       ],
-      "id": "34a44c60-c437-4e90-bd4c-b7d47cc78a3c",
+      "id": "a9232265-1863-41d7-bf25-a36df2f82b63",
       "name": "If"
-    },
-    {
-      "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "28896b79-2a6b-43ad-b8f3-79cd13a96aed",
-              "name": "rag_advice",
-              "value": "Suspicious email detected. Avoid clicking links",
-              "type": "string"
-            }
-          ]
-        },
-        "includeOtherFields": true,
-        "options": {}
-      },
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4,
-      "position": [
-        0,
-        0
-      ],
-      "id": "8ada7705-9c7e-4746-80f8-10b4fc3e2937",
-      "name": "Edit Fields"
     },
     {
       "parameters": {
@@ -107,7 +83,7 @@
             {
               "id": "0e873572-0ef6-42a8-a38b-38523a2eed51",
               "name": "rag_advice",
-              "value": "null",
+              "value": "",
               "type": "string"
             }
           ]
@@ -121,7 +97,7 @@
         0,
         192
       ],
-      "id": "a345b1f0-0d23-438f-987a-55045f9fdc51",
+      "id": "be58ae04-1ad4-404e-8013-c5ca95f90dbe",
       "name": "Edit Fields1"
     },
     {
@@ -133,10 +109,10 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        368,
-        96
+        384,
+        144
       ],
-      "id": "9cc01fdc-c669-4215-80a0-582153697525",
+      "id": "1527997c-88d0-4f9b-9b7a-9ba43a7ffb27",
       "name": "Respond to Webhook"
     },
     {
@@ -151,7 +127,7 @@
         -656,
         64
       ],
-      "id": "bfa43acd-7e7a-4f25-84bd-aaef5d302c2d",
+      "id": "31b1789f-845c-41fd-9fd1-82333005a072",
       "name": "Merge1"
     },
     {
@@ -186,8 +162,82 @@
         -416,
         80
       ],
-      "id": "747244e7-ded4-4464-8b38-786eab88198b",
+      "id": "b1240e6c-867d-453b-bfb8-abf314409810",
       "name": "Normalize"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://rag:8083/query",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "text",
+              "value": "={{ $('Normalize').item.json.email_text }}"
+            },
+            {
+              "name": "fraud",
+              "value": "true"
+            },
+            {
+              "name": "confidence",
+              "value": "={{ $('Normalize').item.json.probability }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        16,
+        16
+      ],
+      "id": "c97b2e87-0129-4961-80ca-91f9c23fea9a",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "cdd0bd14-53f5-4445-bf7d-c6a9dcbe748d",
+              "name": "prediction",
+              "value": "={{ $('HTTP Request').item.json.prediction }}",
+              "type": "string"
+            },
+            {
+              "id": "7b92d34e-8f39-4dbd-b284-04c2443e1ffe",
+              "name": "probability",
+              "value": "={{ $('HTTP Request').item.json.probability }}",
+              "type": "string"
+            },
+            {
+              "id": "dceb1984-221a-4471-8e77-58c9c32d0d6e",
+              "name": "email_text",
+              "value": "={{ $('Normalize').item.json.email_text }}",
+              "type": "string"
+            },
+            {
+              "id": "2b7dfa41-bdee-402e-bdc2-1e53e3b091bd",
+              "name": "rag_advice",
+              "value": "={{ $json.response }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        192,
+        48
+      ],
+      "id": "34e713f1-43e7-4435-8155-64015d77c3aa",
+      "name": "Edit Fields"
     }
   ],
   "pinData": {},
@@ -223,7 +273,7 @@
       "main": [
         [
           {
-            "node": "Edit Fields",
+            "node": "HTTP Request1",
             "type": "main",
             "index": 0
           }
@@ -231,17 +281,6 @@
         [
           {
             "node": "Edit Fields1",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Edit Fields": {
-      "main": [
-        [
-          {
-            "node": "Respond to Webhook",
             "type": "main",
             "index": 0
           }
@@ -280,29 +319,45 @@
           }
         ]
       ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
   "settings": {
     "executionOrder": "v1",
-    "availableInMCP": false,
-    "timeSavedMode": "fixed",
-    "saveDataErrorExecution": "all",
-    "saveDataSuccessExecution": "all",
-    "saveExecutionProgress": true,
-    "saveManualExecutions": true,
-    "callerPolicy": "workflowsFromSameOwner"
+    "availableInMCP": false
   },
-  "versionId": "c1e8c4c4-2998-44bf-bb2f-dd586e040f7b",
+  "versionId": "2b0be262-acda-4431-9a9a-8ffa785a3ce5",
   "meta": {
-    "instanceId": "595333c21d6ac9589e791f09838319e7b491acb8de85efbc5be689ef4f7e8a08"
+    "instanceId": "d2810ecc68ae63ca1da2f2f666d3e741674d3e2123d193caddf8c907cf1c8ddd"
   },
-  "id": "Xkah4NoHy2QfK8tO7Et5u",
+  "id": "ag7YEC2V326R912BAFm-4",
   "tags": [
     {
-      "updatedAt": "2026-01-15T17:15:52.924Z",
-      "createdAt": "2026-01-15T17:15:52.924Z",
-      "id": "IcAElm3ve8yI4IL9",
+      "updatedAt": "2026-01-25T17:16:36.589Z",
+      "createdAt": "2026-01-25T17:16:36.589Z",
+      "id": "KmUareXUVizjMu55",
       "name": "analyze-email"
     }
   ]
