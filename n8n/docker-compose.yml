@@ -11,8 +11,29 @@ services:
       - "5678:5678"
     volumes:
       - xyf_n8n_data:/home/node/.n8n
+      - ../data:/data  # Montage du dossier data pour accès aux CSV
+      - ../scripts:/data/scripts  # Montage du dossier scripts
+      - ../artifacts:/data/artifacts  # Montage du dossier artifacts
+    environment:
+      - N8N_CUSTOM_EXTENSIONS=/data
     networks:
       - serving_prod_net # on le branche sur ce réseau externe
+
+  python-worker:
+    image: python:3.11-slim
+    container_name: python-retrain-worker
+    volumes:
+      - ../data:/app/data
+      - ../scripts:/app/scripts
+      - ../artifacts:/app/artifacts
+      - ./retrain_service.py:/app/retrain_service.py
+    working_dir: /app
+    ports:
+      - "9000:9000"
+    command: >
+      bash -c "pip install --no-cache-dir pandas scikit-learn joblib jupyter nbconvert fastapi uvicorn && python /app/retrain_service.py"
+    networks:
+      - serving_prod_net
 
 
 volumes:

@@ -1,0 +1,18 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Installer les dépendances
+RUN pip install --no-cache-dir \
+    pandas \
+    scikit-learn \
+    joblib \
+    jupyter \
+    nbconvert
+
+# Copier les scripts
+COPY ../scripts /app/scripts
+COPY ../data /app/data
+COPY ../artifacts /app/artifacts
+
+CMD ["tail", "-f", "/dev/null"]

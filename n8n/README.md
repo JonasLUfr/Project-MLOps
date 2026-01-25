@@ -38,15 +38,17 @@ Rôle de **n8n** :
 
 ### 3. Modifications apportées
 
-## Fichiers modifiés
-serving/docker-compose.yml
-webapp/api.py
-webapp/docker-compose.yml
-## Nouveaux fichiers
-n8n/
-├── docker-compose.yml
-├── workflows/
-│ └── analyze-email.json
+#### Fichiers modifiés
+- **serving/api.py** - Ajout des endpoints `/feedback` et `/reload-model`
+- **webapp/api.py** - Existant (appelle n8n webhook)
+- **webapp/docker-compose.yml** - Existant
+- **n8n/docker-compose.yml** - Ajout du service `python-retrain-worker` et montage des volumes
+- **scripts/DataModeling.ipynb** - Lecture et concaténation de prod_data.csv avec Phishing_validation_emails.csv
+
+#### Nouveaux fichiers
+- **n8n/retrain-model.json** - Workflow n8n pour le réentraînement automatique
+- **n8n/retrain_service.py** - Service FastAPI pour exécuter le notebook
+- **n8n/RETRAIN_README.md** - Documentation détaillée du réentraînement
 
 
 
@@ -157,32 +159,150 @@ Retour JSON vers la webapp.
 
 ### 9. Feedback utilisateur (prévu)
 
-La webapp permet déjà de :
+La webapp permet de :
+- corriger la prédiction du modèle,
+- envoyer un feedback structuré à l'API.
 
--corriger la prédiction,
+**Flux :**
 
--envoyer un feedback structuré.
+1. Utilisateur voit la prédiction (Phishing / Safe)
+2. Clique sur "Envoyer la correction" s'il désaccord
+3. La webapp appelle `POST /feedback` sur l'API serving
+4. L'API sauvegarde dans `data/prod_data.csv`
 
-Étape suivante :
+**Données collectées :**
+```csv
+email_text,model_prediction,user_correction
+"Texte de l'email","Phishing Email","Safe Email"
+```
 
--endpoint n8n /feedback,
+Ces feedbacks sont automatiquement intégrés au réentraînement quotidien.
 
--insertion en base,
+### 10. Ré-entraînement automatique
 
--enrichissement du dataset.
+Un nouveau workflow automatisé a été implémenté pour le ré-entraînement du modèle.
 
-### 10. Ré-entraînement automatique (à implémenter)
+#### Architecture du Retrain Workflow
 
-Objectif :
+**Deux déclencheurs :**
+1. **Manual Trigger** - Lancer le réentraînement à la demande depuis n8n
+2. **Schedule Daily Trigger** - Réentraîner automatiquement tous les jours (toutes les 24h)
 
-Lancer quotidiennement un entraînement à partir des ajouts en base.
+**Flux du workflow :**
 
-Implémentation prévue avec n8n :
--Cron Trigger
--Lecture des nouveaux exemples
--Ré-entraînement
--Versioning du modèle
--Redéploiement du serving
+```
+[Manual Trigger / Schedule Trigger]
+            ↓
+[Execute Notebook Training] (HTTP POST)
+            ↓
+[Check Success] (vérifier status == "success")
+       ↙         ↘
+   TRUE         FALSE
+     ↓             ↓
+[Reload Model]  [Error Response]
+     ↓
+[Success Response]
+```
+
+#### Étapes détaillées
+
+1. **Execute Notebook Training**
+   - Appel HTTP POST au service Python : `http://python-retrain-worker:9000/retrain`
+   - Lance l'exécution du notebook [scripts/DataModeling.ipynb](../scripts/DataModeling.ipynb)
+
+2. **Script de réentraînement (DataModeling.ipynb)**
+   - Lit `data/prod_data.csv` (feedbacks utilisateurs)
+   - Lit `data/Phishing_validation_emails.csv` (données de référence)
+   - Concatène les deux sources de données
+   - Entraîne un modèle TF-IDF + LogisticRegression
+   - Sauvegarde dans `artifacts/phishing_tfidf_logreg.joblib`
+   - Génère les métriques dans `artifacts/metrics.json`
+
+3. **Check Success**
+   - Vérifie que le réentraînement s'est bien déroulé (status == "success")
+
+4. **Reload Model in API** (si succès)
+   - Appel HTTP POST à `http://serving-api:8080/reload-model`
+   - L'API serving recharge le nouveau modèle en mémoire sans redémarrer
+
+5. **Response**
+   - En cas de succès : message de confirmation avec timestamp
+   - En cas d'erreur : détails de l'erreur
+
+#### Service de réentraînement
+
+Un service FastAPI dédié au réentraînement tourne dans le conteneur `python-retrain-worker` :
+
+```
+Port: 9000
+Endpoint: POST /retrain
+Dépendances: pandas, scikit-learn, joblib, jupyter, nbconvert
+```
+
+#### Feedback utilisateur
+
+L'endpoint `/feedback` de l'API serving collecte les corrections utilisateurs :
+
+```
+POST /feedback
+{
+  "email_text": "...",
+  "model_prediction": "Phishing Email",
+  "user_correction": "Safe Email"
+}
+```
+
+Les feedbacks sont sauvegardés dans `data/prod_data.csv` et utilisés au prochain réentraînement.
+
+#### Configuration Docker
+
+Trois conteneurs travaillent ensemble :
+
+**1. n8n** (5678)
+- Orchestration et déclenchement
+
+**2. python-retrain-worker** (9000)
+- Exécution du notebook
+- Service FastAPI pour le réentraînement
+
+**3. serving-api** (8080)
+- Inférence du modèle
+- Rechargement du modèle
+
+Tous sont sur le réseau `serving_prod_net`.
+
+#### Lancer les services
+
+```bash
+# Redémarrer n8n (avec volumes des données)
+docker compose -f n8n/docker-compose.yml up -d
+
+# Redémarrer l'API serving (avec endpoint /reload-model)
+docker compose -f serving/docker-compose.yml up -d --build
+
+# Importer le workflow dans n8n
+# Menu → Import from File → n8n/retrain-model.json
+# Activer le workflow (toggle en haut à droite)
+```
+
+#### Tester manuellement
+
+```bash
+# Lancer le réentraînement via l'API
+curl -X POST http://localhost:9000/retrain
+
+# Recharger le modèle dans l'API serving
+curl -X POST http://localhost:8080/reload-model
+
+# Vérifier les métriques
+cat artifacts/metrics.json
+```
+
+#### Logs
+
+- **Logs du workflow n8n** : Interface n8n → Executions
+- **Logs du service Python** : `docker logs python-retrain-worker`
+- **Logs de l'API serving** : `docker logs serving-api`
 
 
 ### 11. RAG (à implémenter)

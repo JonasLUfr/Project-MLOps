@@ -125,3 +125,15 @@ def save_feedback(feedback: FeedbackInput):
         return {"status": "Feedback Saved"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur: {e}")
+
+@app.post("/reload-model")
+def reload_model():
+    """Recharge le modèle depuis le disque"""
+    global model
+    try:
+        model = joblib.load(MODEL_PATH)
+        print(f"✅ Modèle rechargé depuis {MODEL_PATH}")
+        return {"status": "success", "message": "Model reloaded successfully"}
+    except Exception as e:
+        print(f"❌ Erreur rechargement modèle: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to reload model: {e}")

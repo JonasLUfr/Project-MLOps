@@ -75,7 +75,7 @@ if st.session_state['pred_result']:
             
             try:
                 res = requests.post(
-                    f"{API_URL}/feedback",
+                    f"http://serving-api:8080/feedback",
                     json=payload
                 )
                 if res.status_code == 200:
