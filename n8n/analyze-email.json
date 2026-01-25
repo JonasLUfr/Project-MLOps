@@ -1,0 +1,309 @@
+{
+  "name": "My workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "analyze",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1024,
+        48
+      ],
+      "id": "fdeea4c4-dfff-4382-b443-dd21cc2d6760",
+      "name": "Receive Email Text",
+      "webhookId": "0fcbfc1a-05ca-46bf-8782-9d6810d08c41"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://serving-api:8080/predict",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "email_text",
+              "value": "={{$json[\"body\"][\"email_text\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -832,
+        240
+      ],
+      "id": "6b367f10-068f-4110-ac59-2fc75b991e18",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "f4c7f071-7143-4876-93ab-3d0352e2d6d8",
+              "leftValue": "={{$json[\"prediction\"]}}",
+              "rightValue": "Phishing Email",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -208,
+        96
+      ],
+      "id": "34a44c60-c437-4e90-bd4c-b7d47cc78a3c",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "28896b79-2a6b-43ad-b8f3-79cd13a96aed",
+              "name": "rag_advice",
+              "value": "Suspicious email detected. Avoid clicking links",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "id": "8ada7705-9c7e-4746-80f8-10b4fc3e2937",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0e873572-0ef6-42a8-a38b-38523a2eed51",
+              "name": "rag_advice",
+              "value": "null",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        192
+      ],
+      "id": "a345b1f0-0d23-438f-987a-55045f9fdc51",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        368,
+        96
+      ],
+      "id": "9cc01fdc-c669-4215-80a0-582153697525",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -656,
+        64
+      ],
+      "id": "bfa43acd-7e7a-4f25-84bd-aaef5d302c2d",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "57aa84a3-4f0a-4f03-9927-9e7b0e2f483a",
+              "name": "email_text",
+              "value": "={{ $('Receive Email Text').item.json.body.email_text }}",
+              "type": "string"
+            },
+            {
+              "id": "af3afd8f-4431-4505-a64c-ec34e964b006",
+              "name": "prediction",
+              "value": "={{ $('HTTP Request').item.json.prediction }}",
+              "type": "string"
+            },
+            {
+              "id": "20fbacad-2533-4005-be00-68b00df1582d",
+              "name": "probability",
+              "value": "={{ $('HTTP Request').item.json.probability }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -416,
+        80
+      ],
+      "id": "747244e7-ded4-4464-8b38-786eab88198b",
+      "name": "Normalize"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Receive Email Text": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Merge1",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [
+          {
+            "node": "Normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "saveDataErrorExecution": "all",
+    "saveDataSuccessExecution": "all",
+    "saveExecutionProgress": true,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "c1e8c4c4-2998-44bf-bb2f-dd586e040f7b",
+  "meta": {
+    "instanceId": "595333c21d6ac9589e791f09838319e7b491acb8de85efbc5be689ef4f7e8a08"
+  },
+  "id": "Xkah4NoHy2QfK8tO7Et5u",
+  "tags": [
+    {
+      "updatedAt": "2026-01-15T17:15:52.924Z",
+      "createdAt": "2026-01-15T17:15:52.924Z",
+      "id": "IcAElm3ve8yI4IL9",
+      "name": "analyze-email"
+    }
+  ]
+}
