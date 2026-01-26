@@ -2,6 +2,7 @@ import pandas as pd
 import joblib
 import os
 import csv
+import subprocess
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
@@ -10,7 +11,7 @@ app = FastAPI()
 # path
 ARTIFACTS_DIR = "/artifacts"
 DATA_DIR = "/data"
-PROD_DATA_PATH = os.path.join(DATA_DIR, "prod_data.csv")
+PROD_DATA_PATH = os.path.join(DATA_DIR, "prod_data_raw.csv")
 MODEL_PATH = os.path.join(ARTIFACTS_DIR, "phishing_tfidf_logreg.joblib")
 
 # variable globale pour le modèle
@@ -121,10 +122,28 @@ def save_feedback(feedback: FeedbackInput):
                 feedback.model_prediction, 
                 feedback.user_correction
             ])
+
+        # Déclenche la vectorisation (prod_data_raw -> prod_data.csv) après ajout
+        cmd = [
+            "python",
+            "/app/make_prod_vectorized.py",
+            "--input", PROD_DATA_PATH,
+            "--text-col", "email_text",
+            "--target-col", "target",
+            "--output", "/data/prod_data.csv",
+            "--artifact-dir", "/artifacts"
+        ]
+        proc = subprocess.run(cmd, capture_output=True, text=True)
+        if proc.returncode != 0:
+            raise HTTPException(status_code=500, detail=f"Vectorization failed: {proc.stderr}")
             
         return {"status": "Feedback Saved"}
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erreur: {e}")
+        import traceback
+        error_detail = f"Erreur: {str(e)}\n{traceback.format_exc()}"
+        print(f"FEEDBACK ERROR: {error_detail}")
+        raise HTTPException(status_code=500, detail=error_detail)
 
 @app.post("/reload-model")
 def reload_model():

@@ -14,7 +14,7 @@ services:
       - "8083:8083"
     # lit le le fichier .env pour remplir automatiquement
     env_file:
-      - .env
+      - ../.env
     environment:
       - PORT=8083
       - HOST=0.0.0.0
