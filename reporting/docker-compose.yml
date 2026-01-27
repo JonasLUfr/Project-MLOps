@@ -14,5 +14,6 @@ services:
       - "8082:8082"
     volumes:
       - ../data:/data  # car doit pouvoir voir ref_data.csv et prod_data.csv
+      - ../artifacts:/artifacts
     networks:
       - serving_prod_net

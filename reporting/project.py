@@ -1,98 +1,180 @@
 import pandas as pd
 import os
 import time
+import json
+import joblib
+import numpy as np
+from sklearn.decomposition import TruncatedSVD
+from sklearn.feature_extraction.text import TfidfVectorizer
+
 from evidently.report import Report
 from evidently.metric_preset import DataDriftPreset, ClassificationPreset, TargetDriftPreset
+# Ajout de DatasetSummaryMetric pour avoir le compte exact des lignes
+from evidently.metrics import DatasetSummaryMetric 
 from evidently.ui.workspace import Workspace
 from evidently.pipeline.column_mapping import ColumnMapping
-from evidently.ui.dashboards import DashboardPanelCounter, PanelValue, ReportFilter
+from evidently.ui.dashboards import DashboardPanelCounter, PanelValue, ReportFilter, CounterAgg
+from evidently.renderers.html_widgets import WidgetSize
 
-# path (accessibles via le volume Docker)
+# --- CHEMINS ---
 REF_DATA_PATH = "/data/ref_data.csv"
-PROD_DATA_PATH = "/data/prod_data.csv"
-WORKSPACE_PATH = "workspace" # dossier local dans le conteneur pour stocker la BDD Evidently
+PROD_RAW_PATH = "/data/prod_data_raw.csv"
+PROD_VEC_PATH = "/data/prod_data.csv"
+METRICS_PATH = "/artifacts/metrics.json"
+ARTIFACTS_DIR = "/artifacts"
+WORKSPACE_PATH = "workspace"
+
+def load_metrics():
+    """Charge les métriques (Accuracy, F1...) depuis metrics.json"""
+    if os.path.exists(METRICS_PATH):
+        try:
+            with open(METRICS_PATH, 'r') as f:
+                m = json.load(f)
+            stats = m.get("test", m.get("val", {}))
+            return stats
+        except Exception as e:
+            print(f"⚠️ Erreur lecture metrics.json: {e}")
+    return {}
+
+def vectorize_prod_data():
+    """Vectorisation ROBUSTE (Mode Sûr)"""
+    if not os.path.exists(PROD_RAW_PATH):
+        return False
+
+    print("🔄 Début de la vectorisation...")
+    try:
+        svd_path = os.path.join(ARTIFACTS_DIR, "svd_ref.joblib")
+        tfidf_path = os.path.join(ARTIFACTS_DIR, "tfidf_vectorizer.joblib")
+        
+        if not os.path.exists(svd_path) or not os.path.exists(tfidf_path):
+            print("❌ Artefacts manquants (SVD ou TFIDF).")
+            return False
+
+        # Chargement direct
+        svd = joblib.load(svd_path)
+        tfidf = joblib.load(tfidf_path)
+
+        df_raw = pd.read_csv(PROD_RAW_PATH)
+        if 'email_text' not in df_raw.columns:
+            return False
+
+        texts = df_raw['email_text'].fillna("").astype(str).tolist()
+        
+        # Transformation
+        tfidf_vec = tfidf.transform(texts)
+        svd_vec = svd.transform(tfidf_vec)
+
+        # DataFrame SVD
+        cols = [f"svd_{i}" for i in range(svd_vec.shape[1])]
+        df_vec = pd.DataFrame(svd_vec, columns=cols)
+        
+        # Mapping Text -> Int
+        label_map = {"Phishing Email": 1, "Safe Email": 0}
+        
+        if 'prediction' in df_raw.columns:
+            df_vec['prediction'] = df_raw['prediction'].map(label_map).fillna(0).astype(int)
+        if 'target' in df_raw.columns:
+            df_vec['target'] = df_raw['target'].map(label_map).fillna(0).astype(int)
+
+        df_vec.to_csv(PROD_VEC_PATH, index=False)
+        print(f"✅ prod_data.csv généré ({len(df_vec)} lignes).")
+        return True
+
+    except Exception as e:
+        print(f"❌ Erreur vectorisation: {e}")
+        return False
 
 def create_report():
-    if not os.path.exists(REF_DATA_PATH):
-        print("❌ Erreur : ref_data.csv introuvable.")
+    print("🕒 Lancement du reporting...")
+    
+    # 1. Génération
+    vectorize_prod_data()
+    
+    # 2. Chargement
+    if not os.path.exists(REF_DATA_PATH) or not os.path.exists(PROD_VEC_PATH):
+        print("❌ Données manquantes.")
         return
-    # chargement des données
+
     ref_data = pd.read_csv(REF_DATA_PATH)
+    prod_data = pd.read_csv(PROD_VEC_PATH)
     
-    if not os.path.exists(PROD_DATA_PATH):
-        print("⚠️ prod_data.csv n'existe pas encore. Rapport impossible.")
-        return
-        
-    prod_data = pd.read_csv(PROD_DATA_PATH)
+    # --- NETTOYAGE ---
+    if 'prediction' in ref_data.columns:
+        ref_data = ref_data.drop(columns=['prediction'])
+    if 'prediction' in prod_data.columns:
+        prod_data = prod_data.drop(columns=['prediction'])
+
+    # Typage numérique forcé
+    for col in ref_data.columns:
+        if col.startswith('svd_'):
+            ref_data[col] = pd.to_numeric(ref_data[col], errors='coerce')
+            if col in prod_data.columns:
+                prod_data[col] = pd.to_numeric(prod_data[col], errors='coerce')
     
-    if len(prod_data) < 2:
-        print("⚠️ Pas assez de données de production pour générer un rapport.")
-        return
+    ref_data = ref_data.fillna(0)
+    prod_data = prod_data.fillna(0)
 
-    print(f"📊 Génération du rapport avec {len(ref_data)} lignes de ref et {len(prod_data)} lignes de prod...")
-
-    # config du Workspace Evidently
+    # 3. Workspace
     ws = Workspace.create(WORKSPACE_PATH)
-    
-    # on crée le projet s'il n'existe pas
-    project_name = "Churn Monitoring"
-    project = None
-    
-    # recherche du projet existant
+    project_name = "Phishing Monitor"
     search = ws.search_project(project_name)
-    if search:
-        project = search[0]
-    else:
-        project = ws.create_project(project_name)
-        project.description = "Monitoring du modèle de Churn"
-
-        project.dashboard.add_panel(
-            DashboardPanelCounter(
-                title="Nombre de lignes traitées",
-                filter=ReportFilter(metadata_values={}, tag_values=[]),
-                value=PanelValue(
-                    metric_id="DatasetMissingValuesMetric", 
-                    field_path="current.number_of_rows", 
-                    legend="Lignes (Prod)"
-                )
-            )
+    project = search[0] if search else ws.create_project(project_name)
+    
+    project.dashboard.panels = []
+    
+    metrics = load_metrics()
+    acc = metrics.get('accuracy', 0) * 100
+    
+    # Panel 1: Accuracy (Statique, donc valeur forcée dans le titre, le compteur reste à 0 car pas calculé ici)
+    project.dashboard.add_panel(
+        DashboardPanelCounter(
+            title=f"Accuracy (Training): {acc:.1f}%",
+            filter=ReportFilter(metadata_values={}, tag_values=[]),
+            value=PanelValue(metric_id="DatasetSummaryMetric", field_path="current.number_of_columns", legend="Indicateur Fixe"),
+            agg=CounterAgg.LAST,
+            size=WidgetSize.HALF
         )
-
-        project.save()
-
-
-    # on précise à Evidently quelles colonnes utiliser
-    # si 'prediction' n'est pas dans ref_data, on ne peut pas calculer le drift dessus
-    # donc on va lister les métriques une par une pour éviter celles qui plantent
+    )
     
-    # on verif si 'prediction' est bien dans les deux fichiers
-    include_prediction_metrics = 'prediction' in ref_data.columns and 'prediction' in prod_data.columns
+    # Panel 2: Volumétrie (Dynamique)
+    project.dashboard.add_panel(
+        DashboardPanelCounter(
+            title="Emails Traités (Prod)",
+            filter=ReportFilter(metadata_values={}, tag_values=[]),
+            # ICI on pointe vers la bonne métrique qu'on va calculer juste après
+            value=PanelValue(metric_id="DatasetSummaryMetric", field_path="current.number_of_rows", legend="Emails"),
+            agg=CounterAgg.LAST,
+            size=WidgetSize.HALF
+        )
+    )
+    project.save()
+
+    # 4. Rapport
+    mapping = ColumnMapping()
+    common_cols = set(ref_data.columns) & set(prod_data.columns)
+    svd_cols = [c for c in common_cols if c.startswith('svd_')]
+    mapping.numerical_features = svd_cols
     
+    if 'target' in common_cols:
+        mapping.target = 'target'
+    mapping.prediction = None
+
+    # AJOUT DE DatasetSummaryMetric DANS LA LISTE DE CALCUL
     metrics_list = [
-        #DataDriftPreset(),       # verif si les donnees drift (PCA) -> pas update au format text
-        TargetDriftPreset()      # verif si la cible change
+        DatasetSummaryMetric(),  # <--- Indispensable pour le panel compteur !
+        DataDriftPreset(), 
+        TargetDriftPreset()
     ]
 
-    # config du mapping
-    data_mapping = ColumnMapping()
-    
-    if include_prediction_metrics:
-        # si on a la prédiction partout, on ajoute les métriques de classification
-        metrics_list.append(ClassificationPreset()) # verif la performance (F1, Accuracy..., si 'target' est présent
-        data_mapping.prediction = 'prediction'
-    else:
-        print("⚠️ Colonne 'prediction' absente de ref_data. Les métriques de classification seront ignorées.")
-        # dans ce cas, on force Evidently à ignorer la colonne prediction
-        data_mapping.prediction = None
-
-    report = Report(metrics=metrics_list)
-    report.run(reference_data=ref_data, current_data=prod_data, column_mapping=data_mapping)
-
-    # save dans le Workspace (pour que l'UI le voie)
-    ws.add_report(project.id, report)
-    print("✅ Rapport généré et envoyé au Dashboard !")
+    try:
+        report = Report(metrics=metrics_list)
+        report.run(reference_data=ref_data, current_data=prod_data, column_mapping=mapping)
+        ws.add_report(project.id, report)
+        print("✅ Rapport complet généré !")
+    except Exception as e:
+        import traceback
+        print(f"❌ Erreur Evidently: {e}")
+        traceback.print_exc()
 
 if __name__ == "__main__":
-    # petit délai pour être sûr que le volume soit monté
-    time.sleep(2)
     create_report()
