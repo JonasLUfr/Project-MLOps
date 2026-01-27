@@ -9,14 +9,13 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 from evidently.report import Report
 from evidently.metric_preset import DataDriftPreset, ClassificationPreset, TargetDriftPreset
-# Ajout de DatasetSummaryMetric pour avoir le compte exact des lignes
 from evidently.metrics import DatasetSummaryMetric 
 from evidently.ui.workspace import Workspace
 from evidently.pipeline.column_mapping import ColumnMapping
 from evidently.ui.dashboards import DashboardPanelCounter, PanelValue, ReportFilter, CounterAgg
 from evidently.renderers.html_widgets import WidgetSize
 
-# --- CHEMINS ---
+# Path (pour docker)
 REF_DATA_PATH = "/data/ref_data.csv"
 PROD_RAW_PATH = "/data/prod_data_raw.csv"
 PROD_VEC_PATH = "/data/prod_data.csv"
@@ -33,21 +32,21 @@ def load_metrics():
             stats = m.get("test", m.get("val", {}))
             return stats
         except Exception as e:
-            print(f"⚠️ Erreur lecture metrics.json: {e}")
+            print(f"Erreur lecture metrics.json: {e}")
     return {}
 
 def vectorize_prod_data():
-    """Vectorisation ROBUSTE (Mode Sûr)"""
+    """Vectorisation"""
     if not os.path.exists(PROD_RAW_PATH):
         return False
 
-    print("🔄 Début de la vectorisation...")
+    print("Début de la vectorisation...")
     try:
         svd_path = os.path.join(ARTIFACTS_DIR, "svd_ref.joblib")
         tfidf_path = os.path.join(ARTIFACTS_DIR, "tfidf_vectorizer.joblib")
         
         if not os.path.exists(svd_path) or not os.path.exists(tfidf_path):
-            print("❌ Artefacts manquants (SVD ou TFIDF).")
+            print("Artefacts manquants (SVD ou TFIDF).")
             return False
 
         # Chargement direct
@@ -77,20 +76,20 @@ def vectorize_prod_data():
             df_vec['target'] = df_raw['target'].map(label_map).fillna(0).astype(int)
 
         df_vec.to_csv(PROD_VEC_PATH, index=False)
-        print(f"✅ prod_data.csv généré ({len(df_vec)} lignes).")
+        print(f"prod_data.csv généré ({len(df_vec)} lignes).")
         return True
 
     except Exception as e:
-        print(f"❌ Erreur vectorisation: {e}")
+        print(f"Erreur vectorisation: {e}")
         return False
 
 def create_report():
-    print("🕒 Lancement du reporting...")
+    print("Lancement du reporting...")
     
-    # 1. Génération
+    # Génération
     vectorize_prod_data()
     
-    # 2. Chargement
+    # Chargement
     if not os.path.exists(REF_DATA_PATH) or not os.path.exists(PROD_VEC_PATH):
         print("❌ Données manquantes.")
         return
@@ -98,7 +97,7 @@ def create_report():
     ref_data = pd.read_csv(REF_DATA_PATH)
     prod_data = pd.read_csv(PROD_VEC_PATH)
     
-    # --- NETTOYAGE ---
+    # Nettoyage
     if 'prediction' in ref_data.columns:
         ref_data = ref_data.drop(columns=['prediction'])
     if 'prediction' in prod_data.columns:
@@ -114,7 +113,7 @@ def create_report():
     ref_data = ref_data.fillna(0)
     prod_data = prod_data.fillna(0)
 
-    # 3. Workspace
+    # Workspace
     ws = Workspace.create(WORKSPACE_PATH)
     project_name = "Phishing Monitor"
     search = ws.search_project(project_name)
@@ -125,7 +124,7 @@ def create_report():
     metrics = load_metrics()
     acc = metrics.get('accuracy', 0) * 100
     
-    # Panel 1: Accuracy (Statique, donc valeur forcée dans le titre, le compteur reste à 0 car pas calculé ici)
+    # Panel 1: Accuracy (Statique)
     project.dashboard.add_panel(
         DashboardPanelCounter(
             title=f"Accuracy (Training): {acc:.1f}%",
@@ -141,7 +140,6 @@ def create_report():
         DashboardPanelCounter(
             title="Emails Traités (Prod)",
             filter=ReportFilter(metadata_values={}, tag_values=[]),
-            # ICI on pointe vers la bonne métrique qu'on va calculer juste après
             value=PanelValue(metric_id="DatasetSummaryMetric", field_path="current.number_of_rows", legend="Emails"),
             agg=CounterAgg.LAST,
             size=WidgetSize.HALF
@@ -149,7 +147,7 @@ def create_report():
     )
     project.save()
 
-    # 4. Rapport
+    # Rapport
     mapping = ColumnMapping()
     common_cols = set(ref_data.columns) & set(prod_data.columns)
     svd_cols = [c for c in common_cols if c.startswith('svd_')]
@@ -159,9 +157,8 @@ def create_report():
         mapping.target = 'target'
     mapping.prediction = None
 
-    # AJOUT DE DatasetSummaryMetric DANS LA LISTE DE CALCUL
     metrics_list = [
-        DatasetSummaryMetric(),  # <--- Indispensable pour le panel compteur !
+        DatasetSummaryMetric(),
         DataDriftPreset(), 
         TargetDriftPreset()
     ]
@@ -170,10 +167,10 @@ def create_report():
         report = Report(metrics=metrics_list)
         report.run(reference_data=ref_data, current_data=prod_data, column_mapping=mapping)
         ws.add_report(project.id, report)
-        print("✅ Rapport complet généré !")
+        print("Rapport complet généré !")
     except Exception as e:
         import traceback
-        print(f"❌ Erreur Evidently: {e}")
+        print(f"Erreur Evidently: {e}")
         traceback.print_exc()
 
 if __name__ == "__main__":
