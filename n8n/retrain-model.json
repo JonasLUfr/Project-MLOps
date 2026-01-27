@@ -6,31 +6,27 @@
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
       "position": [
-        240,
-        300
+        -1984,
+        16
       ],
-      "id": "manual-trigger-1",
+      "id": "2d5d6bde-b7ed-4857-b7a8-03a2367cb6e5",
       "name": "Manual Trigger"
     },
     {
       "parameters": {
         "rule": {
           "interval": [
-            {
-              "field": "hours",
-              "operator": "every",
-              "value": 24
-            }
+            {}
           ]
         }
       },
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.1,
       "position": [
-        240,
-        450
+        -1984,
+        160
       ],
-      "id": "schedule-trigger-1",
+      "id": "ccb3eec1-66b7-4821-8455-db1ff860c7a2",
       "name": "Schedule Daily Trigger"
     },
     {
@@ -42,10 +38,10 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        460,
-        300
+        -1760,
+        16
       ],
-      "id": "exec-retrain-1",
+      "id": "40d79ff6-0ded-4413-ae2f-d9b7ce7bd16c",
       "name": "Execute Notebook Training"
     },
     {
@@ -68,15 +64,16 @@
             }
           ],
           "combinator": "and"
-        }
+        },
+        "options": {}
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        680,
-        300
+        -1552,
+        16
       ],
-      "id": "check-success-1",
+      "id": "e5c93cab-bf81-469f-8dd8-2087b2d7e5e8",
       "name": "Check Success"
     },
     {
@@ -88,69 +85,40 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        900,
-        200
+        -1328,
+        -96
       ],
-      "id": "reload-model-1",
+      "id": "abb10b94-e13c-4bb9-8ad7-b7cdee92416d",
       "name": "Reload Model in API"
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "success-msg",
-              "name": "status",
-              "value": "Model retrained and reloaded successfully",
-              "type": "string"
-            },
-            {
-              "id": "timestamp",
-              "name": "timestamp",
-              "value": "={{ $now.toISO() }}",
-              "type": "string"
-            }
-          ]
-        }
+        "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3,
       "position": [
-        1120,
-        200
+        -1104,
+        -96
       ],
-      "id": "set-success-1",
+      "id": "b65ad821-24cb-40ac-9f09-2f63e18a51a7",
       "name": "Set Success Response"
     },
     {
       "parameters": {
-        "assignments": {
-          "assignments": [
-            {
-              "id": "error-msg",
-              "name": "status",
-              "value": "Model retraining failed",
-              "type": "string"
-            },
-            {
-              "id": "error-details",
-              "name": "error",
-              "value": "={{ $json.stderr || $json.stdout }}",
-              "type": "string"
-            }
-          ]
-        }
+        "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3,
       "position": [
-        900,
-        400
+        -1328,
+        112
       ],
-      "id": "set-error-1",
+      "id": "74268311-706c-4651-af5b-415e6ff2461f",
       "name": "Set Error Response"
     }
   ],
+  "pinData": {},
   "connections": {
     "Manual Trigger": {
       "main": [
@@ -165,13 +133,7 @@
     },
     "Schedule Daily Trigger": {
       "main": [
-        [
-          {
-            "node": "Execute Notebook Training",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Execute Notebook Training": {
@@ -215,14 +177,22 @@
       ]
     }
   },
-  "active": false,
+  "active": true,
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "availableInMCP": false
   },
+  "versionId": "8b5d85af-4b0d-4225-ae1d-64dcfd6dec4e",
+  "meta": {
+    "instanceId": "57d1bcb57c358c84d31dd921b1f57c347a744c9b19fcbc64f718f9a944cbd2c8"
+  },
+  "id": "LfFbJV8rR7pSGySLhwv59",
   "tags": [
     {
-      "name": "mlops",
-      "id": "mlops-tag-1"
+      "updatedAt": "2026-01-25T17:20:04.941Z",
+      "createdAt": "2026-01-25T17:20:04.941Z",
+      "id": "NFYOvVsbtMvAjTDA",
+      "name": "mlops"
     }
   ]
 }
