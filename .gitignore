@@ -1,7 +1,9 @@
 # Python
 __pycache__/
 *.pyc
-
+.env
+.venv/
+venv/
 
 # OS
 .DS_Store

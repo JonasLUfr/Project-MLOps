@@ -1,6 +1,4 @@
 """
-Prepare prod_data.csv with SVD features + model outputs.
-
 Prereqs (from DataModeling.ipynb):
 - artifacts/phishing_tfidf_logreg.joblib  (pipeline TF-IDF + LogisticRegression)
 - artifacts/svd_ref.joblib                (TruncatedSVD fitted on the same TF-IDF space as ref_data.csv)

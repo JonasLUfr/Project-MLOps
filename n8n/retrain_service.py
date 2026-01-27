@@ -14,8 +14,7 @@ def read_root():
 def trigger_retrain():
     """Lance le réentraînement du modèle via le notebook"""
     try:
-        print(f"🔄 Starting retrain with notebook: {NOTEBOOK_PATH}")
-        print(f"📂 Working directory: /app/scripts")
+        
         
         # Vérifier que le notebook existe
         if not os.path.exists(NOTEBOOK_PATH):
@@ -34,9 +33,9 @@ def trigger_retrain():
             timeout=300  # 5 minutes max
         )
         
-        print(f"📊 Return code: {result.returncode}")
-        print(f"📝 Stdout: {result.stdout[:500]}")
-        print(f"❌ Stderr: {result.stderr[:500]}")
+        print(f" Return code: {result.returncode}")
+        print(f" Stdout: {result.stdout[:500]}")
+        print(f" Stderr: {result.stderr[:500]}")
         
         if result.returncode == 0:
             return {
@@ -45,8 +44,8 @@ def trigger_retrain():
                 "stdout": result.stdout
             }
         else:
-            print(f"❌ RETRAIN FAILED - stderr: {result.stderr}")
-            print(f"❌ RETRAIN FAILED - stdout: {result.stdout}")
+            print(f" RETRAIN FAILED - stderr: {result.stderr}")
+            print(f" RETRAIN FAILED - stdout: {result.stdout}")
             raise HTTPException(
                 status_code=500,
                 detail={
@@ -56,10 +55,10 @@ def trigger_retrain():
                 }
             )
     except subprocess.TimeoutExpired:
-        print("⏱️ TIMEOUT during retrain")
+        print(" TIMEOUT during retrain")
         raise HTTPException(status_code=500, detail="Retraining timeout")
     except Exception as e:
-        print(f"💥 EXCEPTION during retrain: {e}")
+        print(f" EXCEPTION during retrain: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

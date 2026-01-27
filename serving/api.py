@@ -67,7 +67,7 @@ def predict(data: EmailInput):
         raw_proba = model.predict_proba([cleaned_email]).max()
 
         # pour debug type -> affichage dans les logs
-        print(f"🔍 DEBUG TYPE: Pred={type(raw_pred)} Val={raw_pred} | Proba={type(raw_proba)}")
+        print(f"DEBUG TYPE: Pred={type(raw_pred)} Val={raw_pred} | Proba={type(raw_proba)}")
 
         # conversion -> on force la proba en float python standard pour eviter une erreur
         final_proba = float(raw_proba)
@@ -151,8 +151,8 @@ def reload_model():
     global model
     try:
         model = joblib.load(MODEL_PATH)
-        print(f"✅ Modèle rechargé depuis {MODEL_PATH}")
+        print(f" Modèle rechargé depuis {MODEL_PATH}")
         return {"status": "success", "message": "Model reloaded successfully"}
     except Exception as e:
-        print(f"❌ Erreur rechargement modèle: {e}")
+        print(f" Erreur rechargement modèle: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to reload model: {e}")

@@ -1,35 +1,41 @@
+# app_optimized.py
 import os
+import time
+from typing import Optional, List, Dict, Any
+
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template
 from pymongo import MongoClient
 
 from llama_index.core import Settings, VectorStoreIndex, StorageContext
 from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.query_engine import RetrieverQueryEngine
 
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.vector_stores.mongodb import MongoDBAtlasVectorSearch
 from llama_index.llms.groq import Groq
 
 
+# ----------------------------
 # App / Env
+# ----------------------------
 app = Flask(__name__, static_folder="static", template_folder="templates")
 load_dotenv()
 
-MONGODB_URI       = os.getenv("MONGODB_URI")
-DB_NAME           = os.getenv("DB_NAME", "rag")
-COLL_NAME         = os.getenv("COLLECTION_NAME", "documents")
+MONGODB_URI = os.getenv("MONGODB_URI")
+DB_NAME = os.getenv("DB_NAME", "rag")
+COLL_NAME = os.getenv("COLLECTION_NAME", "documents")
 VECTOR_INDEX_NAME = os.getenv("VECTOR_INDEX_NAME", "vector_index")
 
-EMB_MODEL         = os.getenv("EMB_MODEL", "BAAI/bge-small-en-v1.5")
-EMB_DIM           = int(os.getenv("EMB_DIM", "384"))
+EMB_MODEL = os.getenv("EMB_MODEL", "BAAI/bge-small-en-v1.5")
+EMB_DIM = int(os.getenv("EMB_DIM", "384"))
 
-GROQ_API_KEY      = os.getenv("GROQ_API_KEY")
-GROQ_MODEL        = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-TOP_K             = int(os.getenv("TOP_K", "6"))
-HOST              = os.getenv("HOST", "127.0.0.1")
-PORT              = int(os.getenv("PORT", "5000"))
+TOP_K = int(os.getenv("TOP_K", "6"))
+HOST = os.getenv("HOST", "127.0.0.1")
+PORT = int(os.getenv("PORT", "5000"))
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 if not MONGODB_URI:
     raise RuntimeError("MONGODB_URI not set in .env")
@@ -37,9 +43,11 @@ if not GROQ_API_KEY:
     raise RuntimeError("GROQ_API_KEY not set in .env")
 
 
-# System prompt (email triage assistant)
+# ----------------------------
+# System prompt (one-shot email assistant)
+# ----------------------------
 SYSTEM_PROMPT = """You are an email security assistant specialized in phishing and spam response.
-Input: the full raw email content pasted by the user (sender, subject, body, links, attachments if mentioned), plus fraud probability with an optional retrieved context from a knowledge base.
+Input: the full raw email content pasted by the user (sender, subject, body, links, attachments if mentioned), plus a fraud probability, with optional retrieved context from a knowledge base.
 Goal: produce a single self-contained response the user can follow immediately.
 
 Hard rules:
@@ -64,7 +72,7 @@ Output format (ALWAYS, in this order):
 - Confidence: Low/Medium/High
 
 2) Why this email looks suspicious (evidence-based)
-Provide 3-5 bullet indicators, grouped when possible:
+Provide 3–5 bullet indicators, grouped when possible:
 - Sender / domain indicators
 - Link / URL indicators
 - Content & social-engineering indicators
@@ -72,7 +80,7 @@ Provide 3-5 bullet indicators, grouped when possible:
 Each bullet must reference a concrete element from the email (e.g., domain, wording, mismatch, urgency).
 
 3) Immediate actions (do now)
-Provide 3-5 concrete steps. Must be actionable for a normal user.
+Provide 3–5 concrete steps. Must be actionable for a normal user.
 Include:
 - safe handling (do not click, do not reply, do not forward)
 - reporting steps (use report-phishing / forward to IT/security address if generic)
@@ -92,13 +100,16 @@ Now analyze the provided email content and produce the response in the exact for
 """
 
 
+# ----------------------------
 # LlamaIndex setup
+# ----------------------------
 Settings.embed_model = HuggingFaceEmbedding(model_name=EMB_MODEL)
 Settings.llm = Groq(model=GROQ_MODEL, api_key=GROQ_API_KEY)
 
-client = MongoClient(MONGODB_URI)
+mongo = MongoClient(MONGODB_URI)
+
 vector_store = MongoDBAtlasVectorSearch(
-    mongo_client=client,
+    mongo_client=mongo,
     db_name=DB_NAME,
     collection_name=COLL_NAME,
     vector_index_name=VECTOR_INDEX_NAME,
@@ -109,11 +120,12 @@ storage_ctx = StorageContext.from_defaults(vector_store=vector_store)
 index = VectorStoreIndex.from_vector_store(vector_store=vector_store, storage_context=storage_ctx)
 
 retriever = VectorIndexRetriever(index=index, similarity_top_k=TOP_K)
-query_engine = RetrieverQueryEngine.from_args(retriever=retriever)
 
 
-# Answering logic (LLM-led with RAG grounding)
-def _build_user_payload(user_text: str, fraud: bool | None, confidence: float | None) -> str:
+# ----------------------------
+# Helpers
+# ----------------------------
+def _build_user_payload(user_text: str, fraud: Optional[bool], confidence: Optional[float]) -> str:
     meta = []
     if fraud is not None:
         meta.append(f"Fraud classifier: {'YES' if fraud else 'NO'}")
@@ -125,61 +137,86 @@ def _build_user_payload(user_text: str, fraud: bool | None, confidence: float | 
     return f"User input:\n{user_text}"
 
 
-def _extract_sources(res, limit: int = 5):
-    sources = []
-    for sn in getattr(res, "source_nodes", [])[:limit]:
-        node = getattr(sn, "node", None)
+def _extract_sources_from_nodes(nodes, limit: int = 5) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for n in (nodes or [])[:limit]:
+        node = getattr(n, "node", None)
         meta = getattr(node, "metadata", {}) or {}
-        sources.append(
+        out.append(
             {
                 "filename": meta.get("filename") or meta.get("source"),
                 "page": meta.get("page"),
-                "score": float(getattr(sn, "score", 0.0) or 0.0),
+                "score": float(getattr(n, "score", 0.0) or 0.0),
                 "snippet": ((getattr(node, "text", "") or "")[:220]).replace("\n", " "),
             }
         )
-    return sources
+    return out
 
 
-def _safe_generic_advice(payload: str) -> str:
-    return (
-        "1) Verdict\n"
-        "- Classification: Tier 1\n"
-        "- Confidence: Low\n\n"
-        "2) Why this email may be suspicious (limited evidence)\n"
-        "- The system did not retrieve specific playbook context for this sample.\n"
-        "- Treat as potentially unsafe until verified.\n\n"
-        "3) Immediate actions (do now)\n"
-        "- Do not click links or open attachments.\n"
-        "- Use your mail client’s “Report phishing” / “Report spam” feature.\n"
-        "- If this is a corporate account, forward the email to your IT/security reporting address.\n"
-        "- Block the sender/domain if your mail client allows it.\n\n"
-        "4) What NOT to do\n"
-        "- Do not reply.\n"
-        "- Do not forward to colleagues.\n"
-        "- Do not enter passwords or MFA codes from this email.\n"
-        "- Do not call phone numbers included in the email.\n"
-        "- Do not download files from it.\n\n")
+def _build_context_from_nodes(nodes, max_chars: int = 8000) -> str:
+    """
+    Build retrieved context for the LLM.
+    Keep it bounded to avoid huge prompts.
+    """
+    parts: List[str] = []
+    total = 0
+    for n in nodes or []:
+        text = (getattr(getattr(n, "node", None), "text", "") or "").strip()
+        if not text:
+            continue
+        # Add a separator between chunks
+        chunk = text + "\n\n---\n\n"
+        if total + len(chunk) > max_chars:
+            remain = max_chars - total
+            if remain > 200:
+                parts.append(chunk[:remain])
+            break
+        parts.append(chunk)
+        total += len(chunk)
+    return "".join(parts).strip()
 
 
-def answer_email_assistance(user_text: str, fraud: bool | None = None, confidence: float | None = None) -> dict:
+def _llm_generate(system_prompt: str, payload: str, context: str) -> str:
+    final_prompt = (
+        f"{system_prompt}\n\n"
+        f"Email input:\n{payload}\n\n"
+        f"Retrieved context (may be empty):\n{context}\n"
+    )
+    return Settings.llm.complete(final_prompt).text.strip()
+
+
+def answer_email_assistance(user_text: str, fraud: Optional[bool] = None, confidence: Optional[float] = None) -> Dict[str, Any]:
     payload = _build_user_payload(user_text, fraud, confidence)
-    prompt = f"{SYSTEM_PROMPT}\n\n{payload}"
 
-    # Retrieve context + synthesize answer (LLM-led but grounded by retrieval)
-    res = query_engine.query(prompt)
+    # 1) Retrieval ONLY on the email payload (do NOT pollute retrieval with SYSTEM_PROMPT)
+    nodes = retriever.retrieve(payload)
 
-    answer_text = (getattr(res, "response", None) or str(res)).strip()
-    sources = _extract_sources(res)
+    # 2) Build context + sources (sources can be empty; LLM still answers)
+    context = _build_context_from_nodes(nodes)
+    sources = _extract_sources_from_nodes(nodes)
 
-    # If retrieval returned nothing useful, do NOT hallucinate: generic safe advice.
-    if not sources or not answer_text or answer_text.lower().startswith("empty response"):
-        return {"response": _safe_generic_advice(payload), "sources": []}
+    # 3) LLM generation (always)
+    t0 = time.time()
+    answer_text = _llm_generate(SYSTEM_PROMPT, payload, context)
+    llm_seconds = time.time() - t0
 
-    return {"response": answer_text, "sources": sources}
+    if DEBUG:
+        print(f"[RAG] nodes={len(nodes) if nodes else 0} sources={len(sources)} llm_seconds={llm_seconds:.2f}")
+
+    return {
+        "response": answer_text,
+        "sources": sources,
+        "meta": {
+            "retrieved_nodes": len(nodes) if nodes else 0,
+            "llm_seconds": round(llm_seconds, 3),
+            "top_k": TOP_K,
+        },
+    }
 
 
+# ----------------------------
 # Routes
+# ----------------------------
 @app.route("/")
 def home():
     return render_template("chatbot.html")
@@ -207,14 +244,14 @@ def query_endpoint():
     if not text or not str(text).strip():
         return jsonify({"error": "No text provided"}), 400
 
-    fraud = None
+    fraud: Optional[bool] = None
     if fraud_raw is not None:
         if isinstance(fraud_raw, bool):
             fraud = fraud_raw
         else:
             fraud = str(fraud_raw).lower() in ("1", "true", "yes", "y")
 
-    confidence = None
+    confidence: Optional[float] = None
     if conf_raw is not None:
         try:
             confidence = float(conf_raw)
@@ -229,4 +266,4 @@ def query_endpoint():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, host=HOST, port=PORT)
+    app.run(debug=DEBUG, host=HOST, port=PORT)

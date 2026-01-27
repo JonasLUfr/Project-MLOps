@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email Security Assistant</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; justify-content: center; align-items: center; }
+    .container { background: white; border-radius: 10px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); max-width: 800px; width: 90%; padding: 30px; }
+    h1 { color: #667eea; margin-bottom: 20px; }
+    textarea { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 5px; font-family: Arial; font-size: 14px; }
+    button { background: #667eea; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; margin: 5px; }
+    button:hover { background: #764ba2; }
+    #response { background: #f8f9fa; padding: 15px; border-radius: 5px; margin-top: 20px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="10" stroke="#1a73e8" stroke-width="2"/>
+        <path d="M8 13l2.5 2.5L16 10" stroke="#1a73e8" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <h1>CNRSGPT - Publications UCBL</h1>
+    <div id="spinner" class="spinner" aria-label="Chargement" title="Chargement"></div>
+  </header>
+
+  <main class="container">
+    <section id="chat" class="chat" aria-live="polite" aria-busy="false">
+      <div class="msg bot">
+        <p>Bonjour 👋 Je suis CNRSGPT. Posez une question sur les publications de l’Université Lyon 1.</p>
+        <ul class="sources">
+          <li>Les réponses sont sourcées et résumées de manière contextuelle.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="suggestions">
+      <button class="pill" data-suggest="Quels papiers récents sur la détection d’anomalies à Lyon 1 ?">Anomalies à Lyon 1</button>
+      <button class="pill" data-suggest="Différence entre modèles génératifs et discriminatifs selon les articles ?">Génératif vs discriminatif</button>
+      <button class="pill" data-suggest="Qui travaille sur les graphes de connaissances à Lyon 1 ?">Graphes de connaissances</button>
+      <button class="pill" data-suggest="Donne-moi 3 références clés (titre + année + lien) sur RAG en recherche académique.">3 références RAG</button>
+    </section>
+
+    <section class="inputbar">
+      <input id="userInput" placeholder="Tapez votre question…" aria-label="Saisir votre question"/>
+      <button id="sendBtn" class="send">Envoyer</button>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <small> CNRSGPT - RAG + Vector Search + LLM • © 2025</small>
+  </footer>
+
+  <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>
