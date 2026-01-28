@@ -2,6 +2,10 @@
 
 Ce projet déploie une architecture complète de détection de Phishing incluant une Webapp, une API d'inférence, un module RAG (LLM) et un orchestrateur n8n.
 
+# Demo
+<img width="1355" height="625" alt="image" src="https://github.com/user-attachments/assets/eea6f99f-793f-4770-80c6-f6ac7c6b93db" />  
+<img width="833" height="791" alt="image" src="https://github.com/user-attachments/assets/c1a67358-6894-4415-8e4a-1d200520d552" />  
+
 # Lancement du Projet avec Docker
 ### 1. Prérequis
 
