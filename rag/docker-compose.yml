@@ -16,13 +16,7 @@ services:
     env_file:
       - ../.env
     environment:
-      - PORT=8083
-      - HOST=0.0.0.0
-      - MONGODB_URI=${MONGODB_URI}
-      - DB_NAME=${DB_NAME}
-      - COLLECTION_NAME=${COLLECTION_NAME}
-      - EMB_MODEL=${EMB_MODEL}
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - VECTOR_INDEX_NAME=${VECTOR_INDEX_NAME}
+      PORT: "8083"
+      HOST: "0.0.0.0"
     networks:
       - serving_prod_net
